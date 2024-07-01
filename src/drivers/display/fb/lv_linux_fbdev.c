@@ -29,6 +29,8 @@
 #include "../../../display/lv_display_private.h"
 #include "../../../draw/sw/lv_draw_sw.h"
 
+#include "mxcfb.h"
+
 /*********************
  *      DEFINES
  *********************/
@@ -178,6 +180,31 @@ void lv_linux_fbdev_set_file(lv_display_t * disp, const char * file)
     }
 #endif /* LV_LINUX_FBDEV_BSD */
 
+#ifdef LV_LINUX_FBDEV_IMX_EPDC
+    dsc->vinfo.bits_per_pixel = 8;
+    dsc->vinfo.grayscale = GRAYSCALE_8BIT;
+    dsc->vinfo.activate = FB_ACTIVATE_FORCE | FB_ACTIVATE_NOW;
+    if(ioctl(dsc->fbfd, FBIOPUT_VSCREENINFO, &dsc->vinfo) == -1) {
+        perror("Error setting framebuffer to grayscale");
+        return;
+    }
+
+    uint32_t mode = AUTO_UPDATE_MODE_REGION_MODE;
+    if(ioctl(dsc->fbfd, MXCFB_SET_AUTO_UPDATE_MODE, &mode) == -1) {
+        perror("Failed setting EPDC update mode to region");
+        return;
+    }
+
+    mode = UPDATE_SCHEME_QUEUE;
+    if(ioctl(dsc->fbfd, MXCFB_SET_UPDATE_SCHEME, &mode) == -1) {
+        perror("Failed setting EPDC update scheme");
+        return;
+    }
+
+    dsc->force_refresh = true;
+
+#endif
+
     LV_LOG_INFO("%dx%d, %dbpp", dsc->vinfo.xres, dsc->vinfo.yres, dsc->vinfo.bits_per_pixel);
 
     /* Figure out the size of the screen in bytes*/
@@ -196,6 +223,9 @@ void lv_linux_fbdev_set_file(lv_display_t * disp, const char * file)
     LV_LOG_INFO("The framebuffer device was mapped to memory successfully");
 
     switch(dsc->vinfo.bits_per_pixel) {
+        case 8:
+            lv_display_set_color_format(disp, LV_COLOR_FORMAT_L8);
+            break;
         case 16:
             lv_display_set_color_format(disp, LV_COLOR_FORMAT_RGB565);
             break;
@@ -339,10 +369,27 @@ static void flush_cb(lv_display_t * disp, const lv_area_t * area, uint8_t * colo
     }
 
     if(dsc->force_refresh) {
+#ifndef LV_LINUX_FBDEV_IMX_EPDC
         dsc->vinfo.activate |= FB_ACTIVATE_NOW | FB_ACTIVATE_FORCE;
         if(ioctl(dsc->fbfd, FBIOPUT_VSCREENINFO, &(dsc->vinfo)) == -1) {
             perror("Error setting var screen info");
         }
+#else
+        struct mxcfb_update_data update_data = {0};
+        update_data.update_region.left = area->x1;
+        update_data.update_region.top = area->y1;
+        update_data.update_region.width = area->x2 - area->x1;
+        update_data.update_region.height = area->y2 - area->y1;
+        update_data.waveform_mode = WAVEFORM_MODE_AUTO;
+        update_data.update_mode = UPDATE_MODE_FULL;
+        update_data.temp = TEMP_USE_AMBIENT;
+        update_data.flags = 0;
+
+        if (ioctl(dsc->fbfd, MXCFB_SEND_UPDATE, &update_data) < 0) {
+            perror("Error sending update to EPDC hardware");
+            return;
+        }
+#endif
     }
 
     lv_display_flush_ready(disp);
