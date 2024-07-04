@@ -195,7 +195,7 @@ void lv_linux_fbdev_set_file(lv_display_t * disp, const char * file)
         return;
     }
 
-    mode = UPDATE_SCHEME_QUEUE;
+    mode = UPDATE_SCHEME_QUEUE_AND_MERGE;
     if(ioctl(dsc->fbfd, MXCFB_SET_UPDATE_SCHEME, &mode) == -1) {
         perror("Failed setting EPDC update scheme");
         return;
@@ -381,7 +381,7 @@ static void flush_cb(lv_display_t * disp, const lv_area_t * area, uint8_t * colo
         update_data.update_region.width = area->x2 - area->x1;
         update_data.update_region.height = area->y2 - area->y1;
         update_data.waveform_mode = WAVEFORM_MODE_AUTO;
-        update_data.update_mode = UPDATE_MODE_FULL;
+        update_data.update_mode = UPDATE_MODE_PARTIAL;
         update_data.temp = TEMP_USE_AMBIENT;
         update_data.flags = 0;
 
