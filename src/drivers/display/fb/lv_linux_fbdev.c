@@ -184,6 +184,7 @@ void lv_linux_fbdev_set_file(lv_display_t * disp, const char * file)
     dsc->vinfo.bits_per_pixel = 8;
     dsc->vinfo.grayscale = GRAYSCALE_8BIT;
     dsc->vinfo.activate = FB_ACTIVATE_FORCE | FB_ACTIVATE_NOW;
+    dsc->vinfo.rotate = FB_ROTATE_UR;
     if(ioctl(dsc->fbfd, FBIOPUT_VSCREENINFO, &dsc->vinfo) == -1) {
         perror("Error setting framebuffer to grayscale");
         return;
@@ -280,6 +281,16 @@ void lv_linux_fbdev_set_force_refresh(lv_display_t * disp, bool enabled)
  *   STATIC FUNCTIONS
  **********************/
 
+uint32_t lv_rotation_to_fbdev_rotation(lv_display_rotation_t lv_rotation) {
+    switch (lv_rotation) {
+        case LV_DISPLAY_ROTATION_0: return FB_ROTATE_UR; // UR -> up right
+        case LV_DISPLAY_ROTATION_90: return FB_ROTATE_CW; // 90 degrees clock wise (CW -> clock wise)
+        case LV_DISPLAY_ROTATION_180: return FB_ROTATE_UD; // 180 degreen counter clock wise (UD -> upside down)
+        case LV_DISPLAY_ROTATION_270: return FB_ROTATE_CCW; // 270 degrees counter clock wise (CCW -> counter clock wise)
+        default: return FB_ROTATE_UR;
+    }
+}
+
 static void flush_cb(lv_display_t * disp, const lv_area_t * area, uint8_t * color_p)
 {
     lv_linux_fb_t * dsc = lv_display_get_driver_data(disp);
@@ -297,6 +308,31 @@ static void flush_cb(lv_display_t * disp, const lv_area_t * area, uint8_t * colo
     lv_area_t rotated_area;
     lv_display_rotation_t rotation = lv_display_get_rotation(disp);
 
+// #ifdef LV_LINUX_FBDEV_IMX_EPDC
+//     /* Get variable screen information*/
+//     if(ioctl(dsc->fbfd, FBIOGET_VSCREENINFO, &dsc->vinfo) == -1) {
+//         perror("Error reading variable information");
+//         return;
+//     }
+//
+//     uint32_t fbdev_rotation = lv_rotation_to_fbdev_rotation(rotation);
+//     if (dsc->vinfo.rotate != fbdev_rotation)
+//     {
+//         // Apply new rotation (hardware acceleration using PXP)
+//         dsc->vinfo.rotate = fbdev_rotation;
+//         if(ioctl(dsc->fbfd, FBIOPUT_VSCREENINFO, &dsc->vinfo) == -1) {
+//             perror("Error setting framebuffer to grayscale");
+//             return;
+//         }
+//
+//         /* Get variable screen information*/
+//         if(ioctl(dsc->fbfd, FBIOGET_VSCREENINFO, &dsc->vinfo) == -1) {
+//             perror("Error reading variable information");
+//             return;
+//         }
+//     }
+//
+// #else
     /* Not all framebuffer kernel drivers support hardware rotation, so we need to handle it in software here */
     if(rotation != LV_DISPLAY_ROTATION_0 && LV_LINUX_FBDEV_RENDER_MODE == LV_DISPLAY_RENDER_MODE_PARTIAL) {
         /* (Re)allocate temporary buffer if needed */
@@ -335,6 +371,7 @@ static void flush_cb(lv_display_t * disp, const lv_area_t * area, uint8_t * colo
             h = lv_area_get_height(area);
         }
     }
+// #endif
 
     /* Ensure that we're within the framebuffer's bounds */
     if(area->x2 < 0 || area->y2 < 0 || area->x1 > (int32_t)dsc->vinfo.xres - 1 || area->y1 > (int32_t)dsc->vinfo.yres - 1) {
@@ -348,6 +385,9 @@ static void flush_cb(lv_display_t * disp, const lv_area_t * area, uint8_t * colo
 
     uint8_t * fbp = (uint8_t *)dsc->fbp;
     int32_t y;
+
+    // int32_t disp_hor_res = lv_display_get_horizontal_resolution(disp);
+
     if(LV_LINUX_FBDEV_RENDER_MODE == LV_DISPLAY_RENDER_MODE_DIRECT) {
         uint32_t color_pos =
             area->x1 * px_size +
