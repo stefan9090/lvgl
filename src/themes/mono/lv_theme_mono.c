@@ -24,7 +24,7 @@ typedef struct _my_theme_t my_theme_t;
 #define COLOR_FG      dark_bg ? lv_color_white() : lv_color_black()
 #define COLOR_BG      dark_bg ? lv_color_black() : lv_color_white()
 
-#define BORDER_W_NORMAL  1
+#define BORDER_W_NORMAL  0
 #define BORDER_W_PR      3
 #define BORDER_W_DIS     0
 #define BORDER_W_FOCUS   1
